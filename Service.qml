@@ -11,6 +11,8 @@ Item {
 
   property var toggles: ({ "floating": false, "edge-resize": false })
   property var restoreTo: ({})
+  property bool noWarps: false
+  property int warpOnChangeWorkspace: 1
 
   function hexAddress(address) {
     var value = String(address || "")
@@ -22,8 +24,10 @@ Item {
   }
 
   function dispatch(expressions) {
-    var list = [].concat(expressions)
-    Quickshell.execDetached(["hyprctl", "--batch", list.map(function(e) { return "dispatch " + e }).join(" ; ")])
+    var commands = ["eval hl.config({ cursor = { no_warps = true, warp_on_change_workspace = 0 } })"]
+    commands = commands.concat([].concat(expressions).map(function(e) { return "dispatch " + e }))
+    commands.push("eval hl.config({ cursor = { no_warps = " + noWarps + ", warp_on_change_workspace = " + warpOnChangeWorkspace + " } })")
+    Quickshell.execDetached(["hyprctl", "--batch", commands.join(" ; ")])
   }
 
   function moveTo(workspace, toplevel) {
@@ -85,8 +89,7 @@ Item {
     dispatch(wasActive ? [moveTo(minimizedWorkspace, toplevel), focusWorkspace(from)] : [moveTo(minimizedWorkspace, toplevel)])
   }
 
-  function restore(toplevel) {
-    if (!toplevel) return
+  function restoreSteps(toplevel) {
     var key = hexAddress(toplevel.address)
     var target = restoreTo[key]
     if (!target || target.indexOf("special:") === 0) {
@@ -95,7 +98,12 @@ Item {
     var memory = Object.assign({}, restoreTo)
     delete memory[key]
     restoreTo = memory
-    dispatch([moveTo(target, toplevel), focusWorkspace(target), focusWindow(toplevel)])
+    return [moveTo(target, toplevel), focusWorkspace(target), focusWindow(toplevel)]
+  }
+
+  function restore(toplevel) {
+    if (!toplevel) return
+    dispatch(restoreSteps(toplevel))
   }
 
   function activate(toplevel) {
@@ -107,8 +115,8 @@ Item {
 
   function toggleMaximized(toplevel) {
     if (!toplevel) return
-    if (isMinimized(toplevel)) restore(toplevel)
-    dispatch("hl.dsp.window.fullscreen({ mode = \"maximized\", window = \"" + selector(toplevel) + "\" })")
+    var maximize = "hl.dsp.window.fullscreen({ mode = \"maximized\", window = \"" + selector(toplevel) + "\" })"
+    dispatch(isMinimized(toplevel) ? restoreSteps(toplevel).concat([maximize]) : [maximize])
     Hyprland.refreshToplevels()
   }
 
@@ -127,13 +135,20 @@ Item {
     if (!statusProcess.running) statusProcess.running = true
   }
 
+  function refreshCursorOptions() {
+    if (!cursorProcess.running) cursorProcess.running = true
+  }
+
   function setToggle(name, on) {
     if (toggleProcess.running) return
     toggleProcess.command = [cli, "toggle", name, on ? "on" : "off"]
     toggleProcess.running = true
   }
 
-  Component.onCompleted: refreshToggles()
+  Component.onCompleted: {
+    refreshToggles()
+    refreshCursorOptions()
+  }
 
   Connections {
     target: Hyprland
@@ -144,6 +159,7 @@ Item {
         if (parts[1] === "1") root.minimize(root.toplevelFor(parts[0]))
       } else if (event.name === "configreloaded") {
         root.refreshToggles()
+        root.refreshCursorOptions()
       }
     }
   }
@@ -157,6 +173,22 @@ Item {
           root.toggles = JSON.parse(text)
         } catch (e) {
           console.warn("classic-desktop status:", e)
+        }
+      }
+    }
+  }
+
+  Process {
+    id: cursorProcess
+    command: ["bash", "-c", "hyprctl -j getoption cursor:no_warps; hyprctl -j getoption cursor:warp_on_change_workspace"]
+    stdout: StdioCollector {
+      onStreamFinished: {
+        var lines = text.trim().split("\n")
+        try {
+          root.noWarps = JSON.parse(lines[0]).bool === true
+          root.warpOnChangeWorkspace = Number(JSON.parse(lines[1]).int)
+        } catch (e) {
+          console.warn("classic-desktop cursor options:", e)
         }
       }
     }
