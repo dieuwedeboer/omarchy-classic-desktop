@@ -21,8 +21,21 @@ Item {
     return "address:" + hexAddress(toplevel.address)
   }
 
-  function dispatch(expression) {
-    Quickshell.execDetached(["hyprctl", "dispatch", expression])
+  function dispatch(expressions) {
+    var list = [].concat(expressions)
+    Quickshell.execDetached(["hyprctl", "--batch", list.map(function(e) { return "dispatch " + e }).join(" ; ")])
+  }
+
+  function moveTo(workspace, toplevel) {
+    return "hl.dsp.window.move({ workspace = \"" + workspace + "\", follow = false, window = \"" + selector(toplevel) + "\" })"
+  }
+
+  function focusWorkspace(workspace) {
+    return "hl.dsp.focus({ workspace = \"" + workspace + "\" })"
+  }
+
+  function focusWindow(toplevel) {
+    return "hl.dsp.focus({ window = \"" + selector(toplevel) + "\" })"
   }
 
   function workspaceName(toplevel) {
@@ -30,7 +43,8 @@ Item {
   }
 
   function isActive(toplevel) {
-    return !!(toplevel && toplevel.wayland && toplevel.wayland.activated)
+    if (!toplevel || !toplevel.wayland || !toplevel.wayland.activated) return false
+    return !!Hyprland.focusedWorkspace && workspaceName(toplevel) === String(Hyprland.focusedWorkspace.name)
   }
 
   function isMinimized(toplevel) {
@@ -56,8 +70,9 @@ Item {
     return null
   }
 
-  function focus(toplevel) {
-    dispatch("hl.dsp.focus({ window = \"" + selector(toplevel) + "\" })")
+  function raise(toplevel) {
+    var workspace = workspaceName(toplevel)
+    dispatch(workspace === "" ? [focusWindow(toplevel)] : [focusWorkspace(workspace), focusWindow(toplevel)])
   }
 
   function minimize(toplevel) {
@@ -67,8 +82,7 @@ Item {
     var memory = Object.assign({}, restoreTo)
     memory[hexAddress(toplevel.address)] = from
     restoreTo = memory
-    dispatch("hl.dsp.window.move({ workspace = \"" + minimizedWorkspace + "\", follow = false, window = \"" + selector(toplevel) + "\" })")
-    if (wasActive) dispatch("hl.dsp.focus({ workspace = \"" + from + "\" })")
+    dispatch(wasActive ? [moveTo(minimizedWorkspace, toplevel), focusWorkspace(from)] : [moveTo(minimizedWorkspace, toplevel)])
   }
 
   function restore(toplevel) {
@@ -81,15 +95,14 @@ Item {
     var memory = Object.assign({}, restoreTo)
     delete memory[key]
     restoreTo = memory
-    dispatch("hl.dsp.window.move({ workspace = \"" + target + "\", follow = false, window = \"" + selector(toplevel) + "\" })")
-    focus(toplevel)
+    dispatch([moveTo(target, toplevel), focusWorkspace(target), focusWindow(toplevel)])
   }
 
   function activate(toplevel) {
     if (!toplevel) return
     if (isMinimized(toplevel)) restore(toplevel)
     else if (isActive(toplevel)) minimize(toplevel)
-    else focus(toplevel)
+    else raise(toplevel)
   }
 
   function toggleMaximized(toplevel) {
