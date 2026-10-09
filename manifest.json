@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "id": "io.github.dieuwedeboer.classic-desktop",
+  "name": "Classic Desktop",
+  "version": "0.1.0",
+  "author": "dieuwedeboer",
+  "license": "MIT",
+  "description": "A taskbar, floating windows and minimise for people coming from Windows or Plasma. No extra packages.",
+  "kinds": [
+    "service",
+    "bar-widget"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "service": "Service.qml",
+    "barWidget": "Taskbar.qml"
+  },
+  "barWidget": {
+    "displayName": "Taskbar",
+    "description": "One button per window: click to focus, click again to minimise, right-click for more.",
+    "category": "Compositor",
+    "aliases": [
+      "taskbar",
+      "tasks",
+      "windows",
+      "classic"
+    ],
+    "allowMultiple": false,
+    "defaultSection": "left",
+    "defaults": {
+      "scope": "all",
+      "buttonWidth": 200,
+      "showSettings": true
+    },
+    "schema": [
+      {
+        "key": "scope",
+        "type": "enum",
+        "label": "Windows shown",
+        "description": "Every window, or only those on this monitor's workspace. Minimised windows always show.",
+        "options": [
+          "all",
+          "workspace"
+        ],
+        "defaultValue": "all"
+      },
+      {
+        "key": "buttonWidth",
+        "type": "integer",
+        "label": "Button width",
+        "min": 40,
+        "max": 400,
+        "step": 10,
+        "defaultValue": 200
+      },
+      {
+        "key": "showSettings",
+        "type": "boolean",
+        "label": "Settings button",
+        "description": "Show the button that opens the Classic Desktop toggles.",
+        "defaultValue": true
+      }
+    ]
+  }
+}
