@@ -275,6 +275,16 @@ BarWidget {
         checked: settingsColumn.toggles["edge-resize"] === true
         onClicked: if (root.service) root.service.setToggle("edge-resize", !checked)
       }
+
+      Toggle {
+        width: parent.width
+        enabled: settingsColumn.toggles["titlebars-available"] === true
+        opacity: enabled ? 1 : 0.5
+        label: "Title bars"
+        description: enabled ? "Title bars for apps that do not draw their own" : "Needs hyprbars installed"
+        checked: settingsColumn.toggles["titlebars"] === true
+        onClicked: if (root.service && enabled) root.service.setToggle("titlebars", !checked)
+      }
     }
   }
 }

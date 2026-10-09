@@ -4,7 +4,8 @@ set -euo pipefail
 
 PLUGIN_DIR=$(cd -- "$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")/.." && pwd)
 TOGGLES_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/toggles/hypr"
-TOGGLES=(floating edge-resize)
+TOGGLES=(floating edge-resize titlebars)
+HYPRBARS_SO=/usr/lib/hyprland-plugins/hyprbars.so
 
 usage() {
   cat >&2 <<EOF
@@ -12,10 +13,12 @@ Usage: classic-desktop <command>
 
   status                              Print every toggle as JSON
   toggle <name> [on|off|toggle]       Switch a toggle; default is toggle
+  startup                             Load what the toggles need; run once per session
 
 Toggles:
   floating      New windows open floating. Turning it on floats open windows too.
   edge-resize   Drag any window edge to resize, no modifier key.
+  titlebars     Title bars for apps that do not draw their own. Needs hyprbars.
 EOF
 }
 
@@ -36,6 +39,34 @@ is_on() {
   [[ -f $(flag_file "$1") ]]
 }
 
+hyprbars_loaded() {
+  hyprctl plugin list -j 2>/dev/null | jq -e 'any(.[]; .name == "hyprbars")' >/dev/null
+}
+
+hyprbars_available() {
+  [[ -f $HYPRBARS_SO ]] && return 0
+  command -v hyprpm >/dev/null && hyprpm list 2>/dev/null | grep -q hyprbars
+}
+
+load_hyprbars() {
+  hyprbars_loaded && return 0
+  if [[ -f $HYPRBARS_SO ]]; then
+    hyprctl plugin load "$HYPRBARS_SO" >/dev/null
+  elif command -v hyprpm >/dev/null; then
+    hyprpm reload -n >/dev/null 2>&1 || true
+  fi
+  hyprbars_loaded && return 0
+  echo "hyprbars could not be loaded. Install it, or check: hyprctl plugin load $HYPRBARS_SO" >&2
+  return 1
+}
+
+unload_hyprbars() {
+  local path
+  path=$(hyprctl plugin list -j 2>/dev/null | jq -r '.[] | select(.name == "hyprbars") | .path // empty')
+  [[ -n $path ]] && hyprctl plugin unload "$path" >/dev/null
+  return 0
+}
+
 status() {
   local name first=1
   printf '{'
@@ -48,6 +79,11 @@ status() {
       printf '"%s":false' "$name"
     fi
   done
+  if hyprbars_available; then
+    printf ',"titlebars-available":true'
+  else
+    printf ',"titlebars-available":false'
+  fi
   printf '}\n'
 }
 
@@ -70,11 +106,13 @@ switch() {
 
   case $action in
     on)
+      [[ $name != titlebars ]] || load_hyprbars
       mkdir -p "$TOGGLES_DIR"
       cp "$PLUGIN_DIR/hypr/$name.lua" "$file"
       ;;
     off)
       rm -f "$file"
+      [[ $name != titlebars ]] || unload_hyprbars
       ;;
     *)
       usage
@@ -87,9 +125,18 @@ switch() {
   echo "$action"
 }
 
+startup() {
+  is_on titlebars || return 0
+  load_hyprbars
+  hyprctl reload >/dev/null
+}
+
 case "${1:-}" in
   status)
     status
+    ;;
+  startup)
+    startup
     ;;
   toggle)
     [[ $# -ge 2 ]] || { usage; exit 1; }

@@ -11,6 +11,7 @@ Item {
 
   property var toggles: ({ "floating": false, "edge-resize": false })
   property var restoreTo: ({})
+  property var lastWorkspace: ({})
   property bool noWarps: false
   property int warpOnChangeWorkspace: 1
 
@@ -145,7 +146,32 @@ Item {
     toggleProcess.running = true
   }
 
+  function remember(address, workspace) {
+    var memory = Object.assign({}, lastWorkspace)
+    memory[hexAddress(address)] = workspace
+    lastWorkspace = memory
+  }
+
+  function noteMove(address, workspace) {
+    var key = hexAddress(address)
+    if (workspace === minimizedWorkspace) {
+      if (!restoreTo[key] && lastWorkspace[key]) {
+        var memory = Object.assign({}, restoreTo)
+        memory[key] = lastWorkspace[key]
+        restoreTo = memory
+      }
+    } else if (workspace.indexOf("special:") !== 0) {
+      remember(address, workspace)
+    }
+  }
+
   Component.onCompleted: {
+    var values = Hyprland.toplevels.values
+    for (var i = 0; i < values.length; i++) {
+      var name = workspaceName(values[i])
+      if (name !== "" && name.indexOf("special:") !== 0) remember(values[i].address, name)
+    }
+    Quickshell.execDetached([cli, "startup"])
     refreshToggles()
     refreshCursorOptions()
   }
@@ -157,6 +183,12 @@ Item {
       if (event.name === "minimized") {
         var parts = String(event.data).split(",")
         if (parts[1] === "1") root.minimize(root.toplevelFor(parts[0]))
+      } else if (event.name === "movewindowv2") {
+        var moved = String(event.data).split(",")
+        root.noteMove(moved[0], moved.slice(2).join(","))
+      } else if (event.name === "openwindow") {
+        var opened = String(event.data).split(",")
+        root.noteMove(opened[0], opened[1])
       } else if (event.name === "configreloaded") {
         root.refreshToggles()
         root.refreshCursorOptions()
